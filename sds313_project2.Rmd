@@ -1,0 +1,294 @@
+---
+title: "Project 2"
+author: "Karol Tang"
+date: "2023-11-10"
+output: html_document
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.height=3, fig.width=7, warning=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60))
+```
+
+# Introduction
+
+This dataset is a collection of how tech workers responded about their mental health in 2014. It was taken from [Kaggle - Mental Health in Tech Survey](https://www.kaggle.com/datasets/osmi/mental-health-in-tech-survey). I chose this topic because tech is a relatively new field; it does not have as strong of a reputation around its work-life balance, or the common perception of it may be misleadingly positive simply because it is new. I thought that it would be interesting to see directly how employees feel about it.
+
+![](https://resources.workable.com/wp-content/uploads/2021/10/TalentLMS.png)
+*Resources for Employers*
+
+The variables of interest are "family_history" (whether they have a family history of mental illness), "Age", "Gender", "work_interfere" (if they have a mental health condition, do they feel that it interferes with their work), and "treatment" (whether they've sought treatment for a mental health condition). The report will investigate how these variables are distributed and how they relate to each other.
+
+# Data Preparation
+
+```{r, echo=FALSE}
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(kableExtra)
+techData <- read.csv("mental_health_in_tech.csv")
+```
+
+The dataset was available for download as a csv file from the website, so I downloaded it and read it into "techData" in R. The total number of observations from the original dataset is 1259.
+
+#### Cleaning "family_history"
+
+```{r, echo=FALSE}
+table(techData$family_history) #looks clean, only yes and no
+nrow(techData[is.na(techData$family_history)==TRUE, ]) #no NA values
+```
+
+I saw that there are "Yes" and "No" responses, as well as no NA values, so this variable looks clean. 
+
+#### Cleaning "Age":
+
+```{r, echo=FALSE}
+table(techData$Age)
+#remove abnormally old or young - only keep ages 20-90
+clean_techData <- techData[techData$Age>=20,]
+clean_techData <- clean_techData[clean_techData$Age<=90,]
+nrow(clean_techData[is.na(clean_techData$Age)==TRUE, ]) #no NA values
+```
+
+Using a table, I saw that there were some odd responses for age, such as 99999999999, 329, negative numbers, and very small numbers. I wanted to only keep reasonable working ages, so I kept ages 20-90 (although 90 is quite old to be working). In doing this, I created a new dataset, "clean_techData." Finally, I counted the number of rows after filtering out weird ages that contained NA values, which was none. 
+
+#### Cleaning "Gender"
+
+```{r, echo=FALSE}
+clean_techData$cleanGender <- tolower(clean_techData$Gender)
+#table(clean_techData$cleanGender)
+```
+
+I changed all of the responses to lowercase so that I could only focus on the content of the response and not any syntax. After creating a table for the responses, I saw that there were many different responses for the same meaning (such as male/man/m), as well as typos. 
+
+```{r, echo=FALSE}
+#female
+#should have 249 female
+rows_to_replace <- str_detect(clean_techData$cleanGender, "fem|^f$|woman")
+
+clean_techData$cleanGender[rows_to_replace] <- "Female"
+#table(clean_techData$cleanGender) 
+```
+
+I started by replacing observations with that contained "fem" or "woman," or were only "f" by "Female." It was easier to do Female first, because there were less typos among people who identified as female. Additionally, "woman" and "female" contain "man" and "male," respectively, so doing Male first would have changed some Female responses to Male. 
+
+```{r, echo=FALSE}
+#male
+#should have 974 male
+
+rows_to_replace <- str_detect(clean_techData$cleanGender, "^male$|^m$|man|mail|^mal|msle|make|cis male")
+clean_techData$cleanGender[rows_to_replace] <- "Male"
+#table(clean_techData$cleanGender)
+```
+
+After doing the Female responses, I created a table of the "Gender" responses again and used the leftover responses for men (which were mostly typos) as conditions to change the response to "Male."
+
+```{r, echo=FALSE}
+#other
+#should have 12
+rows_to_replace <- which(clean_techData$cleanGender != "Female" & clean_techData$cleanGender!="Male")
+clean_techData$cleanGender[rows_to_replace] <- "Other"
+table(clean_techData$cleanGender)
+```
+
+Finally, I changed anything that was not already "Female" or "Male" to "Other." I only wanted answers that sounded like they were sure of their gender identity to count towards a binary, so responses like "guy (-ish) ^_^", "guy-ish," and "ostensibly male, unsure what that really means" counted as "Other." 
+
+Throughout this process, I created tables to check that reassigning responses to Female/Male/Other was not changing the number of responses in a category that had already been done. 
+
+#### Cleaning "work_interfere"
+
+```{r, echo=FALSE}
+rows_to_replace <- which(is.na(clean_techData$work_interfere))
+clean_techData$work_interfere[rows_to_replace] <- "No mental health condition"
+```
+
+I created a vector of TRUE/FALSE based on whether the work_interfere variable in the dataset was an NA value. Then, for the rows that were TRUE (meaning that the value of "work_interfere" was NA), I changed the NA value to "No mental health condition." This is assuming that everyone who did not answer the question does not have a mental health condition and that everyone who did answer does have a condition, because the question from the survey was "If you have a mental health condition, do you feel that it interferes with your work?"
+
+#### Cleaning "treatment"
+
+```{r, echo=FALSE}
+nrow(clean_techData[is.na(clean_techData$treatment)==TRUE, ])
+table(clean_techData$treatment) #clean
+```
+There are no NA values for responses to "treatment" and the responses are all "Yes" or "No," so I did not need to do anything else. 
+
+#### Creating new variable: condition
+
+```{r, echo=FALSE}
+condition <- ifelse(clean_techData$work_interfere == "No mental health condition", "no", "yes")
+
+```
+
+This assumes that everyone who did not provide an answer for work_interference has no mental health condition, and everyone who did provide an answer does have a condition. 
+
+# Variable Descriptions
+
+```{r, echo=FALSE}
+clean_techData_subset <- tibble(family_history = clean_techData$family_history, Age = clean_techData$Age, Gender = clean_techData$cleanGender, work_interfere = clean_techData$work_interfere, treatment = clean_techData$treatment, condition = condition)
+```
+
+I made clean_techData_subset to only contain the variables that I wanted to look at.The number of observations for this cleaned dataset was 1235.
+
+```{r, echo=FALSE}
+variable_names <- colnames(clean_techData_subset)
+
+variable_descriptions <- c("Do you have a family history of mental illness?","Respondent age", "Respondent gender","If you have a mental health condition, do you feel that it interferes with your work?", "Have you sought treatment for a mental health condition?","Do you have a mental health condition? (inferred)")
+variable_type <- c("Categorical", "Numeric","Categorical","Categorical","Categorical","Categorical")
+
+variable_table <- data.frame(variable_names,variable_type,variable_descriptions)
+colnames(variable_table) <- c("Name","Type", "Description")
+kable(variable_table, format = 'pipe', caption = "Variable Information")
+```
+
+
+# Univariate Analysis
+
+#### Family History
+
+```{r, echo=FALSE}
+clean_techData_subset_gg <- ggplot(clean_techData_subset)
+
+clean_techData_subset_gg + geom_bar(aes(x=family_history),fill='skyblue') + labs(title='Whether Respondent Has a Family History of Mental Illness', x='Response',y='Count') + theme_classic()
+
+prop.table(table(clean_techData_subset$family_history))
+```
+
+The graph above shows the distribution of responses to whether the respondent has a family history of mental illness, whereas the table shows the proportion of each response. Noticeably more people do not have a family history of mental illness. There are `r sum(clean_techData_subset$family_history == "No")` people who do not have a family history of mental illness, and `r sum(clean_techData_subset$family_history == "Yes")` people who do.
+
+#### Age
+
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_bar(aes(x=Age),fill='skyblue') + labs(title='Age of Respondent', x='Age',y='Count') + theme_classic()
+```
+
+The graph above shows the distribution of ages among the respondents. Looking at the graph, it is skewed right. The mean age is `r mean(clean_techData_subset$Age)`, with a standard deviation of `r sd(clean_techData_subset$Age)`. The lowest age is `r min(clean_techData_subset$Age)` and the highest is `r max(clean_techData_subset$Age)`.
+
+#### Gender
+
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_bar(aes(x=Gender),fill='skyblue') + labs(title='Gender Identification of Respondent', x='Gender',y='Count') + theme_classic()
+
+prop.table(table(clean_techData_subset$Gender))
+
+```
+
+The graph above shows distribution of gender identifications of each respondent, while the table shows the proportion of each response. There are significantly more males than females, and more males and females than people who identified otherwise. There are `r sum(clean_techData_subset$Gender == "female")` people who identify as female, `r sum(clean_techData_subset$Gender == "male")` people who identify as male, and `r sum(clean_techData_subset$Gender == "other")` people who identify as something other.
+
+#### Work Interfere
+
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_bar(aes(x=work_interfere),fill='skyblue') + labs(title='How Often a Mental Health Condition Interferes with Work', x='Frequency',y='Count') + theme_classic()
+
+prop.table(table(clean_techData_subset$work_interfere))
+```
+
+The table above shows the distribution of responses to how often a mental health condition interferes with work, and the table shows the proportion of each response. There are the highest number of people who responded "Sometimes."
+
+There are `r sum(clean_techData_subset$work_interfere == "Never")` people whose mental health condition never interferes with their work, `r sum(clean_techData_subset$work_interfere == "Rarely")` people whose mental health condition rarely interferes with their work, `r sum(clean_techData_subset$work_interfere == "Sometimes")` people whose mental health condition sometimes interferes with their work, `r sum(clean_techData_subset$work_interfere == "Often")` people whose mental health condition often interferes with their work, and `r sum(clean_techData_subset$work_interfere == "No mental health condition")` people who do not have a mental health condition.
+
+#### Treatment
+
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_bar(aes(x=treatment),fill='skyblue') + labs(title='Whether Respondent has Sought Treatment for a Mental Health Condition', x='Response',y='Count') + theme_classic()
+
+prop.table(table(clean_techData_subset$treatment))
+```
+
+The graph above shows the distribution of responses to whether the respondent has sought treatment for a mental health condition, and the table shows the proportion of each response. There were relatively equal number of responses between "Yes" and "No," with slightly more people saying "Yes."
+
+There are `r sum(clean_techData_subset$treatment == "No")` people who have not sought treatment for a mental health condition and `r sum(clean_techData_subset$work_interfere == "Yes")` people who have.
+
+#### Condition
+
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_bar(aes(x=condition),fill='skyblue') + labs(title='Whether Respondent has a Mental Health Condition (Inferred)', x='Has Condition',y='Count') + theme_classic()
+
+prop.table(table(clean_techData_subset$condition))
+```
+
+The graph above shows the distribution of people with and without mental health conditions, based on their response to whether their mental health condition affect their work. Based on this interpretation, many more tech workers have mental health conditions (`r sum(clean_techData_subset$condition == "yes")`) than those that do not (`r sum(clean_techData_subset$condition == "no")`). The graph above shows the proportion of each answer. 
+
+# Multivariate Analyses
+
+#### Age vs Work Interfere
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_histogram(aes(x=Age),fill='skyblue') + facet_wrap(~work_interfere)+labs(title='Distribution of Age by Work Interference',x='Age',y='Count') 
+
+#age stats from work_interfere categories
+interference <- unique(clean_techData_subset$work_interfere)
+
+for (i in 1:length(interference)) {
+  mean_age <- mean(clean_techData_subset$Age[clean_techData_subset$work_interfere == interference[i]], na.rm = TRUE)
+  
+  cat("The mean age of", interference[i], "was", mean_age, "\n")
+
+}
+```
+
+Each histogram above shows the distribution of age for a different work_interfere category. The loop shows the mean age by work_interfere category. The "Never" category has the highest average age, while "No mental health condition" has the lowest. Looking at the graphs, the distribution of age is skewed right for every work_interfere category. 
+
+#### Gender vs Work Interfere
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_bar(aes(x=Gender),fill='skyblue') + facet_wrap(~work_interfere)+labs(title='Distribution of Gender by Work Interference',x='Gender',y='Count') 
+
+#gender stats from work_interfere categories
+prop.table(table(clean_techData_subset$Gender,clean_techData_subset$work_interfere),margin=2)
+```
+
+The bar graphs above show the distribution of gender by work_interference category. In each category, there were more men than any other gender. The table shows the proportion of genders by each work_interference category. We can see that the proportion of men is always above 70%. 
+
+#### Family History vs Work Interfere
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_bar(aes(x=family_history),fill='skyblue') + facet_wrap(~work_interfere)+labs(title='Distribution of Family History Responses by Work Interference',x='Family History of Mental Illness',y='Count') 
+
+#gender stats from work_interfere categories
+prop.table(table(clean_techData_subset$family_history,clean_techData_subset$work_interfere),margin=2)
+```
+
+The bar graphs above show the distribution of the responses to family_history. For categories "Never","No mental health condition", and "Rarely," there are more people who do not have a family history of mental illness. For "Often" and "Sometimes," there are more people who do have a family history of mental illness. The table shows the proportion of family_history responses within each work_interfere category. "Often", "Rarely", and "Sometimes" have proportions around 50/50, whereas "Never" and "No mental health condition" have more extreme differences. 
+
+#### Treatment vs Gender
+```{r, echo=FALSE}
+clean_techData_subset_gg + geom_bar(aes(x=Gender),fill='skyblue') + facet_wrap(~treatment)+labs(title='Whether Respondent Sought Treatment, by Gender',x='Gender',y='Count') 
+
+prop.table(table(clean_techData_subset$Gender,clean_techData_subset$treatment),margin=2)
+```
+
+```{r, echo=FALSE}
+gender_treatment_table <- table(clean_techData_subset$Gender, clean_techData_subset$treatment)
+
+# Iterate through each gender
+genders <- c(clean_techData_subset$Gender)
+genders <- unique(genders)
+for (gender in genders) {
+  
+  yes_count <- gender_treatment_table[gender, 'Yes']
+  no_count <- gender_treatment_table[gender, 'No']
+  
+  if (yes_count > no_count) {
+    print(paste("Out of people who identified as", gender, "more sought treatment."))
+  } else if (yes_count < no_count) {
+    print(paste("Out of people who identified as", gender, "more did not seek treatment."))  } else {
+    print(paste("Out of people who identified as", gender, "the number of that did and did not seek treatment is the same."))  }
+}
+```
+
+The graph above shows the genders among each treatment response, and the table shows the proportion of genders among each treatment response. The loop reverses the variables, and shows how the treatment responses compare within each gender. As seen in the graph and table, there were more males than any other gender in both treatment categories (meaning that for treatment categories, the proportion of males was the highest). However, the loop reveals that more people who identified as Female and Other sought treatment (in other words, for Female and Other, the proportion of "Yes" treatment answers were higher). 
+
+
+# Choice Elements
+I used at least 5 in-line codes in the univariate analyses, after displaying graphs and tables. Additionally, I made variable cleanGender, which was the lowercase version of Gender and I changed to be either "Female", "Male", or "Other". I also made variable condition, which represents whether the respondent has a mental health condition and was derived from the work_interfere variable. I parsed the string observations in cleanGender to determine whether they had certain characters, like "fem" or only "male". I used a for loop in the Age vs Work Interference analysis, when I printed the mean age for each work_interfere category. I used a for loop and an if statement in the Treatment vs Gender analysis. 
+
+# Conclusion
+The Age and Gender variable were close to what I expected, with the majority of tech workers being young adult men. I was surprised that the number of people who sought treatment for a mental health condition was higher than those who had not, and the number of people who have a mental health condition is also much higher than expected (although this was an inferred response, and would be due to the wording of survey questions).
+
+There is not much variation within the distribution of ages by work interference, as all of them are skewed right like the histogram of Age. This suggests that there is no significant relationship between age and work interference. 
+
+This is also the case for gender vs work interference, as it follows the regular distribution of gender, with the Male, Female, and Other in decreasing frequency.
+
+There is a relationship between family history and work interference. The graphs suggest that respondents with no family history of mental illness are more likely to have a mental health condition never or rarely interfere with work, or to not have a mental health condition at all. This is what I expected, as individuals with a family history of mental health conditions are genetically more likely to also have a condition. 
+
+I also found that men are less likely to seek treatment for mental health than people who identify as Female or Other, which was expected. 
+
+# References
+Resources for Employers, https://resources.workable.com/stories-and-insights/invest-in-your-tech-workers-or-theyll-move-on-survey. 
+Open Sourcing Mental Illness, LTD. “Mental Health in Tech Survey.” Kaggle, 3 Nov. 2016, www.kaggle.com/datasets/osmi/mental-health-in-tech-survey. 
